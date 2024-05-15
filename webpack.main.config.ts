@@ -1,6 +1,7 @@
 import type { Configuration } from "webpack";
 
 import { rules } from "./webpack.rules";
+import path from "path";
 
 export const mainConfig: Configuration = {
   /**
@@ -13,6 +14,9 @@ export const mainConfig: Configuration = {
     rules,
   },
   resolve: {
+    alias: {
+      'electron': path.resolve(__dirname, 'node_modules/electron')
+    },
     extensions: [".js", ".ts", ".jsx", ".tsx", ".css", ".json"],
     fallback: {
       fs: false,

@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { ipcRenderer } from "electron";
 import { useState, KeyboardEvent, useRef, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -12,6 +12,9 @@ export default function Main() {
   const [minutes, setMinutes] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
+
+  const [dragging, setDragging] = useState(false);
+  const [initialPosition, setInitialPosition] = useState({ x: 0, y: 0 });
 
   const timer = useRef<NodeJS.Timeout>();
 
@@ -30,14 +33,27 @@ export default function Main() {
     }
   }
 
-  function callSetMinutes(event: React.FormEvent<HTMLInputElement>) {
-    const mins = parseInt(event.currentTarget.value);
-    setMinutes(mins >= 0 ? mins : 0);
-  }
+  const handleMouseMove = throttle(
+    (event: React.FormEvent<HTMLInputElement> | MouseEvent) => {
+      if (dragging) {
+        const e = event as MouseEvent;
+        const x = e.screenX - initialPosition.x;
+        const y = e.screenY - initialPosition.y;
+        ipcRenderer.send("move-window", { x, y });
+        setInitialPosition({ x: e.screenX, y: e.screenY });
+      }
+    },
+    100
+  );
 
   function callSetSeconds(event: React.FormEvent<HTMLInputElement>) {
     const secs = parseInt(event.currentTarget.value);
     setSeconds(secs >= 0 ? (secs < 60 ? secs : 59) : 0);
+  }
+
+  function callSetMinutes(event: React.FormEvent<HTMLInputElement>) {
+    const mins = parseInt(event.currentTarget.value);
+    setMinutes(mins >= 0 ? mins : 0);
   }
 
   function StartTimer(minutes: number, seconds: number) {
@@ -52,7 +68,29 @@ export default function Main() {
     }, 1000);
   }
 
+  function throttle(
+    func: {
+      (event: React.FormEvent<HTMLInputElement>): void;
+      (event: MouseEvent): void;
+    },
+    delay: number
+  ) {
+    let lastCall = 0;
+    return function (...args: Parameters<typeof func>) {
+      const now = new Date().getTime();
+      if (now - lastCall < delay) {
+        return;
+      }
+      lastCall = now;
+      return func(...(args as Parameters<typeof func>));
+    };
+  }
+
   const focusElement = (element: HTMLElement) => element.focus();
+
+  const handleMouseUp = () => {
+    setDragging(false);
+  };
 
   useEffect(() => {
     if (minElement.current)
@@ -85,6 +123,15 @@ export default function Main() {
     secElement.current.style.fontSize = `min(${fontSize(seconds)}vw, 100vh)`;
   }, [minutes, seconds]);
 
+  useEffect(() => {
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [dragging, handleMouseMove, handleMouseUp]);
   return (
     <div
       style={{
@@ -96,9 +143,9 @@ export default function Main() {
     >
       <div
         id="drag-handle"
-        draggable={true}
-        onDrag={(e) => {
-          BrowserWindow.getFocusedWindow()?.setPosition(e.screenX, e.screenY);
+        onMouseDown={(e) => {
+          setDragging(true);
+          setInitialPosition({ x: e.screenX, y: e.screenY });
         }}
       ></div>
       <div className="center row">
